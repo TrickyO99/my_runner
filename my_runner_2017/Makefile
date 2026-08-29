@@ -5,7 +5,7 @@
 ##
 ##
 
-SRC	=	src/*.c
+SRC	=	$(wildcard src/*.c)
 
 OBJ	=	$(SRC:.c=.o)
 
@@ -15,7 +15,7 @@ NAME	=	my_runner
 all:	$(NAME)
 
 $(NAME):	 $(OBJ)
-	 gcc -o $(NAME) $(SRC) -l c_graph_prog -Wall -Wextra
+	 gcc -o $(NAME) $(OBJ) -lcsfml-graphics -lcsfml-window -lcsfml-system -lcsfml-audio -Wall -Wextra
 
 
 clean:
