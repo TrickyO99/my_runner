@@ -110,12 +110,81 @@ struct/state files, unlike `my_rpg`):
   50 points on collision. The game loop's exit condition
   (`sfEvtClosed` / Escape pressed / `score < 0`) stops music, closes the
   window, and prints "GAME OVER".
+  **Confirmed via `tests/test_logic.c` (see "Automated tests" below):**
+  `position_trump.x` is set once at startup (`100`) and never updated
+  anywhere in the loop, and `position_sombrero.y` is likewise set once
+  (`400`) and never updated — the player sprite never actually moves
+  horizontally, and the sombrero never moves vertically. The collision
+  check therefore reduces to comparing a moving `position_sombrero.x`
+  against the fixed `100`, and the player's `position_trump.y` (from
+  jump physics) against the fixed `400`. Also: the `-50` penalty is
+  applied on **every frame** the two boxes overlap, not once per
+  collision — standing still while a sombrero crosses the danger
+  x-window (`position_sombrero.x` in roughly `[-10, 120]`) loses 50
+  points every single frame for as long as the overlap lasts (dozens of
+  frames), which is why not jumping over an oncoming sombrero ends the
+  game almost immediately. This appears to be intentional obstacle-
+  dodging design (jumping raises `position_trump.y` enough to clear the
+  vertical band within a few frames), just more punishing per-frame than
+  "subtracts 50 points on collision" reads on its own.
+
+  **Bug found and documented (not fixed):** the falling-back-down check
+  `if (position_trump.y <= 425) position_trump.y += 10;` tests the bound
+  *before* adding, so even starting from the exact resting value `425`
+  it still overshoots to `435` and never settles back to `425` again
+  for the rest of that run (confirmed by `tests/test_logic.c`'s
+  `jump_step()` harness). Every subsequent fall likewise overshoots by
+  up to 9px past its true target before the next frame's check finally
+  stops it. Left unfixed here since it's a few-pixel, sub-visual
+  positional drift in a simple prototype's physics, and changing the
+  clamp order would alter the original game's feel without being asked
+  to — flagged in case a future pass wants to tighten it (the general
+  fix would be to add first, then clamp: `position_trump.y += 10; if
+  (position_trump.y > 425) position_trump.y = 425;`).
+
+  Also worth noting: `vitesse_trump` (scroll speed) only ever increases
+  (`+= 0.05` per frame Space is held) and is never decreased or capped,
+  so it climbs monotonically for the entire session based on cumulative
+  jump time, with no decay and no ceiling.
 - **Homemade libc**: `src/my_printf.c` (+ `my_putchar.c`, `my_putstr.c`,
   `my_put_nbr_base.c`, `my_put_unsigned_int.c`, `my_put_pointer.c`,
   `my_put_spe_str.c`, `my_strlen.c`, `my_getnbr.c`) reimplements a small
   `printf`-like formatter (`%d %i %o %x %X %u %c %s %S %p %b %#o %#x %#X`)
   from scratch instead of using the real `<stdio.h>`, standard for Epitech
   "no-libc" project rules.
+
+## Automated tests
+
+Re-confirmed on this pass: `mingw32-make re` still builds `my_runner.exe`
+cleanly (79755 bytes, PE32+ x86-64) with no source changes needed —
+the wildcard-Makefile and CSFML-link fixes documented above still hold.
+
+Since the entire game lives in one `main()` driven by a live SFML
+window and `sfKeyboard_isKeyPressed()` polling, there's nothing to
+drive with a scripted input replay. Instead, `tests/test_logic.c` is a
+small standalone C test harness (no CSFML dependency — pure int/float
+math, builds with plain `gcc`) that copies the three pieces of pure
+gameplay arithmetic out of `src/my_runner.c` line-for-line into
+standalone functions and exercises them with plain assertions:
+
+- `jump_step()` — the SPACE-held/released position, speed and score
+  update (mirrors lines 137-148), including the floor clamp at `y>300`
+  and the resting-ceiling overshoot bug documented above,
+- `collides()` — the AABB-ish overlap check (mirrors lines 160-165),
+  including edge cases at the exact boundary of the collision box,
+- `scroll_wrap()` — the off-screen-reset-to-710 logic shared by the
+  sombrero and both cacti (mirrors lines 128-136).
+
+```sh
+gcc -Wall -Wextra -o tests/test_logic tests/test_logic.c
+./tests/test_logic
+```
+
+All 24 assertions pass, including ones that specifically pin down the
+real (if slightly surprising) behavior described above — e.g. standing
+still under a crossing sombrero counts as a collision on every frame of
+overlap, not just once, and the resting position permanently drifts
+from 425 to 435 after the first jump.
 
 ## Other contents
 
